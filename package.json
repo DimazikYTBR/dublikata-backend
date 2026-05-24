@@ -1,0 +1,13 @@
+{
+  "name": "dublikata-backend",
+  "version": "1.0.0",
+  "description": "Backend for Dublikata Plus",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0",
+    "express": "^4.19.2"
+  }
+}
