@@ -2,7 +2,9 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
@@ -13,17 +15,41 @@ app.post('/donation-webhook', async (req, res) => {
         const userEmail = req.body.username?.trim(); 
         const amount = req.body.amount;
 
+        console.log(`[Входящий вебхук] Имя/Email: ${userEmail}, Сумма: ${amount}`);
+
         if (!userEmail) {
+            console.log('Ошибка: Поле username пустое');
             return res.status(400).send('Email не указан в поле имени');
         }
 
-        console.log(`Прилетел донат от ${userEmail} на сумму ${amount}`);
+        const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('mail', userEmail)
+            .maybeSingle();
+
+        if (userError) {
+            console.error('Ошибка поиска юзера в базе:', userError);
+            return res.status(500).send('Ошибка БД при поиске юзера');
+        }
+
+        if (!user) {
+            console.log(`Пользователь с почтой ${userEmail} не найден в таблице users!`);
+            return res.status(404).send('Пользователь не найден');
+        }
+
+        console.log(`Пользователь найден! ID: ${user.id}. Проверяем подписку...`);
 
         const { data: existingSub, error: subFetchError } = await supabase
             .from('subscriptions')
             .select('expires_at, status')
             .eq('user_id', user.id)
             .maybeSingle();
+
+        if (subFetchError) {
+            console.error('Ошибка получения подписки:', subFetchError);
+            return res.status(500).send('Ошибка БД при проверке подписки');
+        }
 
         let expiresAt = new Date();
 
@@ -37,7 +63,6 @@ app.post('/donation-webhook', async (req, res) => {
             console.log(`Новая подписка создана на 30 дней.`);
         }
 
-        // 3. Сохраняем или обновляем запись в базе
         const { error: subError } = await supabase
             .from('subscriptions')
             .upsert({
@@ -48,11 +73,11 @@ app.post('/donation-webhook', async (req, res) => {
             }, { onConflict: 'user_id' });
 
         if (subError) {
-            console.error('Ошибка активации подписки:', subError);
-            return res.status(500).send('Ошибка базы данных');
+            console.error('Ошибка сохранения подписки в БД:', subError);
+            return res.status(500).send('Ошибка базы данных при записи');
         }
 
-        console.log(`Подписка для ${userEmail} успешно активирована!`);
+        console.log(` ПОБЕДА! Подписка для ${userEmail} успешно активирована!`);
         return res.status(200).send('OK');
 
     } catch (err) {
@@ -61,8 +86,7 @@ app.post('/donation-webhook', async (req, res) => {
     }
 });
 
-// Запуск сервера
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`Сервер Dublikata Studio запущен на порту ${PORT}`);
 });
